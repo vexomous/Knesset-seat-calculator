@@ -4,6 +4,7 @@ class Party():
         self.votes = int(votes)
         self.votesharing = vote_sharing
         self.seats= 0
+        self.percentage = 0
     
     def get_name(self):
         return self.name
@@ -19,6 +20,9 @@ class Party():
 
     def set_leftovers(self, votes):
         self.leftovers = votes
+    
+    def set_percentage(self, percentage):
+        self.percentage = percentage
     
 class SharingAgreement():
     def __init__(self, party1, party2):
