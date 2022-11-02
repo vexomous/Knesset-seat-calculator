@@ -1,37 +1,42 @@
-import csv
 import json
 import operator
 from re import L
 from objects import Party, SharingAgreement
 import math
 import requests
-import re
 from collections import Counter
-import matplotlib.pyplot as plt
-import numpy as np
-import secrets
+import hidden
+import visualizer
+import scraper
+from bidi.algorithm import get_display
 
 THRESHOLD_PERCENT = 3.25
 TOTAL_SEATS = 120
 VOTESHARE_DOC = 'votesharing.json'
+TOTAL_VOTES = 6788804 * 0.713
+RENAME_FILE = 'namereplace.json'
 
-def load_votes():
-    response = requests.get(
-        f'https://docs.google.com/spreadsheet/ccc?key={secrets.SHEET_ID}&output=csv')
-    assert response.status_code == 200, 'Wrong status code'
-    responses = response.content.decode('utf-8').split('\r\n')[1:]
-    responses = [x[20:] for x in responses]
-    counts = Counter(responses)
-    return counts
-
+def rename_parties(parties):
+    party_names = [x.name for x in parties]
+    with open(RENAME_FILE, 'r', encoding="utf8") as f:
+        data = json.load(f)
+        for i, name in enumerate(party_names):
+            try:
+                party_names[i] = data[name]
+            except KeyError as e:
+                continue
+    return party_names
 
 def create_parties(parties_dict):
     parties = list()
-    with open(VOTESHARE_DOC, 'r') as f:
+    with open(VOTESHARE_DOC, 'r', encoding="utf8") as f:
         votesharings = json.load(f)
     for party, votes in parties_dict.items():
         if party != '':
-            parties.append(Party(party, votes, votesharings[party]))
+            try:
+                parties.append(Party(party, votes, votesharings[party]))
+            except KeyError as e:
+                parties.append(Party(party, votes, ""))
     for party in parties:
         party.set_partner(
             next((x for x in parties if x.name == party.votesharing), None))
@@ -56,9 +61,10 @@ def bader_ofer(legit_parties, seat_parameter):
     left_to_partnerize = legit_parties
     partnerships = list()
     for party in left_to_partnerize:
-        partnerships.append(SharingAgreement(party, party.partner))
         if party.partner != None:
-            left_to_partnerize.remove(party.partner)
+            if party.partner.seats > 0:
+                partnerships.append(SharingAgreement(party, party.partner))
+                left_to_partnerize.remove(party.partner)
     while left_to_distribute > 0:
         partnerships = sorted(
             partnerships, key=operator.attrgetter("standard"), reverse=True)
@@ -81,16 +87,22 @@ def calculate_seats(parties):
 
 
 def main():
-    parties_dict = load_votes()
+    table, counted = scraper.get_page()
+    parties_dict = scraper.get_parties(table)
     parties = create_parties(parties_dict)
     calculate_seats(parties)
     parties = sorted(parties, key=lambda x: (
         x.seats, x.percentage), reverse=True)
-    for party in parties:
-        if party.seats > 0:
-            print(party.name, party.seats)
+    counted_percent = counted / TOTAL_VOTES * 100
+    print(f"**Results with about {round(counted_percent, 2)}% of the votes counted:**")
+    party_names = rename_parties(parties)
+    party_seats = [x.seats for x in parties]
+    for id, party in enumerate(party_names):
+        if party_seats[id] > 0:
+            print(get_display(f"{party} {party_seats[id]}"))
         else:
-            print(f"{party.name} {party.percentage}%")
+            print(get_display(f"{party} {parties[id].percentage}%"))
+    visualizer.create_chart(parties)
 
 
 if __name__ == "__main__":
